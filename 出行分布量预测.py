@@ -72,7 +72,6 @@ class ODPredict:
         f = self.g_func(ori_fut, dest_fut)
         # 计算规划年OD
         od_predict = self.od_base * f
-        print(od_predict)
         print('第', self.iter_count, '次迭代结果：\n', od_predict)
         print('-'*20)
 
@@ -221,7 +220,7 @@ ORI_FUT = np.array([1000, 1000, 1250])
 DEST_FUT = np.array([1250, 900, 1100])
 
 if __name__ == '__main__':
-    model = ODPredict()
+    model = ODPredict(g_func=ODPredict.FRA)
     model.fit(ORI_DEST_NOW)
     ret = model.predict(ORI_FUT, DEST_FUT)
     print('\n迭代结果为：\n', ret)
