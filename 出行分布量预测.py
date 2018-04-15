@@ -8,10 +8,13 @@ class ODPredict:
     AVG = 'f_Average'
     DET = 'f_Detroit'
     FRA = 'f_Frater'
+    FUR = 'f_Furness'
 
-    def __init__(self, error=0.01, g_func=AVG):
+    def __init__(self, g_func=AVG, error=0.01, t_round=3, od_round=4):
         self.error = error
         self.g_func = self.__getattribute__(g_func)
+        self.od_round = od_round
+        self.t_round = t_round
 
     def fit(self, od_now):
         '''
@@ -49,7 +52,7 @@ class ODPredict:
         od_o = np.hstack((od, o_sum))
         d_sum = np.atleast_2d(od_o.sum(axis=0))
         od_od = np.vstack((od_o, d_sum))
-        return np.round(od_od)
+        return od_od
 
     def iter_main(self, ori_fut, dest_fut):
         '''
@@ -65,13 +68,12 @@ class ODPredict:
         self.iter_count += 1
 
         # 计算出行量增长率
-        # f = self.f_Average(ori_fut, dest_fut)
-        # f = self.f_Detroit(ori_fut, dest_fut)
-        # f = self.f_Frater(ori_fut, dest_fut)
-        #f = self.f_Furness(ori_fut, dest_fut)
-        f = self.g_func(ori_fut, dest_fut)
+        f = np.round(self.g_func(ori_fut, dest_fut), self.od_round)
+        print('第', self.iter_count, '次迭代系数：\n', f)
+
         # 计算规划年OD
-        od_predict = self.od_base * f
+        od_predict = np.round(self.od_base * f, self.t_round)
+
         print('第', self.iter_count, '次迭代结果：\n', od_predict)
         print('-'*20)
 
@@ -124,7 +126,6 @@ class ODPredict:
 
         F_dest, F_ori = np.meshgrid(F_dest, F_ori)
         ret = (F_dest + F_ori) / 2
-        print('第', self.iter_count, '次增长函数值：\n', ret)
         return ret
 
     def f_Detroit(self, ori_fut, dest_fut):
@@ -142,7 +143,6 @@ class ODPredict:
         F_dest_all = dest_fut.sum() / self.dest_base.sum()
         F_dest_ratio, F_ori = np.meshgrid(F_dest / F_dest_all, F_ori)
         ret = F_ori * F_dest_ratio
-        print('第', self.iter_count, '次增长函数值：\n', ret)
         return ret
 
     def f_Frater(self, ori_fut, dest_fut):
@@ -178,50 +178,42 @@ class ODPredict:
         Returns:
             array: 增长率矩阵
         '''
-        u = np.mat(np.ones(ori_fut.size)).T
-        d = np.mat(dest_fut).T
-        o = np.mat(ori_fut).T
-        t = np.mat(self.od_base)
-        f = self.furness_iter(u, None, o, d, t)
-        return f
-
-    def furness_iter(self, u, v, o, d, t):
-        '''
-        待实现
-        '''
-        pass
-        # v = np.mat(np.array(u) * np.array(t)).I * o
-        # u_test = np.mat(np.array(v) * np.array(t).T).I * d
-        # v_test = np.mat(np.array(u_test) * np.array(t)).I * o
-        # u2 = np.hstack((u_test, u))
-        # v2 = np.hstack((v_test, v))
-        # u_s = np.sum(np.abs(u2 - u2.mean(axis=1))) / u.size / u2.mean(axis=1)
-        # v_s = np.sum(np.abs(v2 - v2.mean(axis=1))) / v.size / v2.mean(axis=1)
-        # if (u_s > 0.03).any() and (v_s > 0.03).any():
-        #     return self.furness_iter(u, v_test, o, d, t)
-        # else:
-        #     u = np.array(u_test).T
-        #     v = np.array(v_test).T
-        #     u, v = np.meshgrid(v, u)
-        #     return u*v
+        if self.iter_count % 2 == 1:
+            F_ori = np.tile(ori_fut / self.od_base.sum(axis=1),
+                            (dest_fut.size, 1)).T
+            return F_ori
+        else:
+            F_dest = np.tile(
+                dest_fut / self.od_base.sum(axis=0), (ori_fut.size, 1))
+            return F_dest
 
 
-# 现状年origin-destination分布矩阵
-ORI_DEST_NOW = np.array([
+####################################
+#  渣渣课本 例题数据
+####################################
+ZZ_OD_NOW = np.array([
     [200, 100, 100],
     [150, 250, 200],
     [100, 150, 150],
 ])
+ZZ_O_F = np.array([1000, 1000, 1250])
+ZZ_D_F = np.array([1250, 900, 1100])
 
-# 规划年产生量向量
-ORI_FUT = np.array([1000, 1000, 1250])
+####################################
+#  邵春福 PPT 例题数据
+####################################
+CF_OD_NOW = np.array([
+    [17, 7, 4],
+    [7, 38, 6],
+    [4, 5, 17]
+])
+CF_O_F = np.array([38.6, 91.9, 36.0])
+CF_D_F = np.array([39.3, 90.3, 36.9])
 
-# 规划年吸引量向量
-DEST_FUT = np.array([1250, 900, 1100])
 
 if __name__ == '__main__':
-    model = ODPredict(g_func=ODPredict.FRA)
-    model.fit(ORI_DEST_NOW)
-    ret = model.predict(ORI_FUT, DEST_FUT)
+    model = ODPredict(g_func=ODPredict.FUR, error=0.03)
+    model.fit(CF_OD_NOW)
+    ret = model.predict(CF_O_F, CF_D_F)
     print('\n迭代结果为：\n', ret)
     print('共迭代 {} 次'.format(model.iter_count))
