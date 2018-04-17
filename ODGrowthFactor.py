@@ -1,10 +1,19 @@
 import numpy as np
 
 
-class ODPredict:
+class ODGrowthFactor:
     '''
-    出行量分布预测
+    创建一个增长率预测模型
+
+    Parameters:
+        g_func: 增长率函数
+        error: 收敛检验误差
+        t_round: OD矩阵有效位数
+        od_round: O&D向量有效位数
+    Returns:
+        一个增长率预测模型
     '''
+
     AVG = 'f_Average'
     DET = 'f_Detroit'
     FRA = 'f_Frater'
@@ -69,13 +78,9 @@ class ODPredict:
 
         # 计算出行量增长率
         f = np.round(self.g_func(ori_fut, dest_fut), self.od_round)
-        print('第', self.iter_count, '次迭代系数：\n', f)
 
         # 计算规划年OD
         od_predict = np.round(self.od_base * f, self.t_round)
-
-        print('第', self.iter_count, '次迭代结果：\n', od_predict)
-        print('-'*20)
 
         # 计算规划年A&G
         ori_predict = od_predict.sum(axis=1)
@@ -123,7 +128,6 @@ class ODPredict:
         # 计算A&G增长率
         F_ori = ori_fut / self.ori_base
         F_dest = dest_fut / self.dest_base
-
         F_dest, F_ori = np.meshgrid(F_dest, F_ori)
         ret = (F_dest + F_ori) / 2
         return ret
@@ -161,9 +165,6 @@ class ODPredict:
         Li = self.ori_base / (self.od_base * F_dest).sum(axis=1)
         Lj = self.dest_base / (self.od_base * F_ori).sum(axis=0)
 
-        print('第', self.iter_count, '次产生位置系数：\n', Li)
-        print('第', self.iter_count, '次吸引位置系数：\n', Lj)
-
         Lj, Lj = np.meshgrid(Lj, Li)
         F_dest, F_ori = np.meshgrid(F_dest, F_ori)
         return F_ori * F_dest * ((Li + Lj)/2)
@@ -186,6 +187,9 @@ class ODPredict:
             F_dest = np.tile(
                 dest_fut / self.od_base.sum(axis=0), (ori_fut.size, 1))
             return F_dest
+
+    def __repr__(self):
+        return '<ODPredict object g_func:{} error:{} t_round:{}, od_round:{}>'.format(self.g_func.__name__, self.error, self.t_round, self.od_round)
 
 
 ####################################
@@ -212,8 +216,8 @@ CF_D_F = np.array([39.3, 90.3, 36.9])
 
 
 if __name__ == '__main__':
-    model = ODPredict(g_func=ODPredict.FUR, error=0.03)
-    model.fit(CF_OD_NOW)
-    ret = model.predict(CF_O_F, CF_D_F)
-    print('\n迭代结果为：\n', ret)
+    model = ODGrowthFactor(g_func=ODGrowthFactor.AVG, error=0.01)
+    model.fit(ZZ_OD_NOW)
+    ret = model.predict(ZZ_O_F, ZZ_D_F)
+    print('迭代结果为：\n', ret)
     print('共迭代 {} 次'.format(model.iter_count))
