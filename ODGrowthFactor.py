@@ -25,199 +25,198 @@ class ODGrowthFactor:
         self.od_round = od_round
         self.t_round = t_round
 
-    def fit(self, od_now):
+    def fit(self, Tr):
         '''
         设置现状年OD表
 
         Parameters:
-            od_now: 现状年的OD矩阵，不含sum项
+            Tr: 现状年的OD矩阵，不含sum项
         '''
-        self.od_now = od_now
-        self.ori_now = od_now.sum(axis=1)
-        self.dest_now = od_now.sum(axis=0)
+        self.Tr = Tr
+        self.Or = Tr.sum(axis=1)
+        self.Dr = Tr.sum(axis=0)
 
-    def predict(self, ori_fut, dest_fut):
+    def predict(self, Of, Df):
         '''
         预测规划年出行分布量
 
         Parameters:
-            ori_fut: 规划年产生量向量
-            dest_fut: 规划吸引量向量
+            Of: 规划年产生量向量
+            Df: 规划吸引量向量
 
         Returns:
             array: 规划年OD表，含sum项
         '''
-        # 初始化迭代变量
         self.iter_count = 0
-        self.od_base = self.od_now
-        self.ori_base = self.ori_now
-        self.dest_base = self.dest_now
-
         # 迭代计算
-        od = self.iter_main(ori_fut, dest_fut)
+        Tret = self.iter_main(self.Tr, Of, Df)
+        return Tret
 
-        # 计算A&G
-        o_sum = np.atleast_2d(od.sum(axis=1)).T
-        od_o = np.hstack((od, o_sum))
-        d_sum = np.atleast_2d(od_o.sum(axis=0))
-        od_od = np.vstack((od_o, d_sum))
-        return od_od
-
-    def iter_main(self, ori_fut, dest_fut):
+    def iter_main(self, Tb, Of, Df):
         '''
         迭代计算
 
         Parameters:
-            ori_fut: 规划年产生量向量
-            dest_fut: 规划年出行量向量
-
+            Tb: 迭代OD矩阵
+            Of: 规划年产生量向量
+            Df: 规划年出行量向量
         Returns:
-            array: 规划年OD表，不含sum项
+            array: 规划年OD矩阵
         '''
         self.iter_count += 1
 
         # 计算出行量增长率
-        f = np.round(self.g_func(ori_fut, dest_fut), self.od_round)
+        f = np.round(self.g_func(Tb, Of, Df), self.od_round)
 
         # 计算规划年OD
-        od_predict = np.round(self.od_base * f, self.t_round)
-
-        # 计算规划年A&G
-        ori_predict = od_predict.sum(axis=1)
-        dest_predict = od_predict.sum(axis=0)
+        Tp = np.round(Tb * f, self.t_round)
 
         # 是否需要迭代
-        if self.should_iter(ori_predict, dest_predict,  ori_fut, dest_fut):
-            self.dest_base = dest_predict
-            self.ori_base = ori_predict
-            self.od_base = od_predict
-            return self.iter_main(ori_fut, dest_fut)
+        if self.should_iter(Tp,  Of, Df):
+            return self.iter_main(Tp, Of, Df)
         else:
-            return od_predict
+            return Tp
 
-    def should_iter(self, ori_predict, dest_predict, ori_fut, dest_fut):
+    def should_iter(self, Tp, Of, Df):
         '''
         判断是否需要继续迭代
 
         Parameters:
-            ori_predict: 规划年产生量预测值向量
-            dest_predict: 规划年吸引两预测值向量
-            ori_fut: 规划年产生量向量
-            dest_fut: 规划年吸引量向量
+            Tp: 预测OD矩阵
+            Of: 规划年产生量向量
+            Df: 规划年吸引量向量
             error: 收敛误差,default=0.01
         Returns:
             Boolean: 如果需要迭代返回True，反之Flase
         '''
         # 计算A&G增长率
-        F_ori_predict = ori_fut / ori_predict
-        F_dest_predict = dest_fut / dest_predict
+        Fop = Of / Tp.sum(axis=1)
+        Fdp = Df / Tp.sum(axis=0)
 
-        return (np.abs((1-F_ori_predict)) >
-                self.error).any() or (np.abs((1-F_dest_predict)) > self.error).any()
+        return (np.abs((1-Fop)) >
+                self.error).any() or (np.abs((1-Fdp)) > self.error).any()
 
-    def f_Average(self, ori_fut, dest_fut):
+    def f_Average(self, Tb, Of, Df):
         '''
         平均增长率法-增长函数
 
         Parameters:
-            ori_fut: 规划年产生量向量
-            dest_fut: 规划年吸引量向量
+            Of: 规划年产生量向量
+            Df: 规划年吸引量向量
         Returns:
             array: 增量率矩阵
         '''
         # 计算A&G增长率
-        F_ori = ori_fut / self.ori_base
-        F_dest = dest_fut / self.dest_base
-        F_dest, F_ori = np.meshgrid(F_dest, F_ori)
-        ret = (F_dest + F_ori) / 2
+        Fd, Fo = np.meshgrid(Df / Tb.sum(axis=0), Of / Tb.sum(axis=1))
+        ret = (Fd + Fo) / 2
         return ret
 
-    def f_Detroit(self, ori_fut, dest_fut):
+    def f_Detroit(self, Tb, Of, Df):
         '''
         底特律法-增长函数
 
         Parameters:
-            ori_fut: 规划年产生量向量
-            dest_fut: 规划年吸引量向量
+            Tb: 迭代OD矩阵
+            Of: 规划年产生量向量
+            Df: 规划年吸引量向量
         Returns:
             array: 增长率矩阵
         '''
-        F_ori = ori_fut / self.ori_base
-        F_dest = dest_fut / self.dest_base
-        F_dest_all = dest_fut.sum() / self.dest_base.sum()
-        F_dest_ratio, F_ori = np.meshgrid(F_dest / F_dest_all, F_ori)
-        ret = F_ori * F_dest_ratio
-        return ret
+        Fo = Of / Tb.sum(axis=1)
+        Fd = Df / Tb.sum(axis=0)
+        FD = Fo.reshape(-1, 1) * Fd / (Df.sum() / Tb.sum(axis=0).sum())
+        return FD
 
-    def f_Frater(self, ori_fut, dest_fut):
+    def f_Frater(self, Tb, Of, Df):
         '''
         佛莱特法-增长函数
 
         Parameters:
-            ori_fut: 规划年产生量向量
-            dest_fut: 规划年吸引量向量
+            Tb: 迭代OD矩阵
+            Of: 规划年产生量向量
+            Df: 规划年吸引量向量
         Returns:
             array: 增长率矩阵
         '''
-        F_ori = ori_fut / self.ori_base
-        F_dest = dest_fut / self.dest_base
+        Ob = Tb.sum(axis=1)
+        Db = Tb.sum(axis=0)
+        Fo = Of / Ob
+        Fd = Df / Db
+        Li = Ob / (Tb * Fd).sum(axis=1)
+        Lj = Db / (Tb * Fo).sum(axis=0)
+        return Fo.reshape(-1, 1) * Fd * (Li.reshape(-1, 1) + Lj) / 2
 
-        Li = self.ori_base / (self.od_base * F_dest).sum(axis=1)
-        Lj = self.dest_base / (self.od_base * F_ori).sum(axis=0)
-
-        Lj, Lj = np.meshgrid(Lj, Li)
-        F_dest, F_ori = np.meshgrid(F_dest, F_ori)
-        return F_ori * F_dest * ((Li + Lj)/2)
-
-    def f_Furness(self, ori_fut, dest_fut):
+    def f_Furness(self, Tb, Of, Df):
         '''
         弗尼斯-增长函数
 
         Parameters:
-            ori_fut: 规划年产生量向量
-            dest_fut: 规划年吸引量向量
+            Tb: 迭代OD矩阵
+            Of: 规划年产生量向量
+            Df: 规划年吸引量向量
         Returns:
             array: 增长率矩阵
         '''
         if self.iter_count % 2 == 1:
-            F_ori = np.tile(ori_fut / self.od_base.sum(axis=1),
-                            (dest_fut.size, 1)).T
-            return F_ori
+            return (Of / Tb.sum(axis=1)).reshape(-1, 1)
         else:
-            F_dest = np.tile(
-                dest_fut / self.od_base.sum(axis=0), (ori_fut.size, 1))
-            return F_dest
+            return Df / Tb.sum(axis=0)
 
-    def __repr__(self):
-        return '<ODPredict object g_func:{} error:{} t_round:{}, od_round:{}>'.format(self.g_func.__name__, self.error, self.t_round, self.od_round)
+    @staticmethod
+    def sum(T):
+        '''
+        对OD矩阵列与行求和
+
+        Parameters:
+            OD: OD矩阵
+        Returns:
+            求和后的矩阵
+        '''
+        T = np.hstack((T, T.sum(axis=1).reshape(-1, 1)))
+        return np.vstack((T, T.sum(axis=0)))
 
 
-####################################
+#######################
 #  渣渣课本 例题数据
-####################################
-ZZ_OD_NOW = np.array([
-    [200, 100, 100],
-    [150, 250, 200],
-    [100, 150, 150],
-])
-ZZ_O_F = np.array([1000, 1000, 1250])
-ZZ_D_F = np.array([1250, 900, 1100])
+#######################
+ZZ = {
+    'Tn': np.array([
+        [150, 100, 50],
+        [400, 100, 200]
+    ]),
+    'Rn': np.array([
+        [3, 2, 5],
+        [3, 5, 4]
+    ])
+}
 
-####################################
+########################
 #  邵春福 PPT 例题数据
-####################################
-CF_OD_NOW = np.array([
-    [17, 7, 4],
-    [7, 38, 6],
-    [4, 5, 17]
-])
-CF_O_F = np.array([38.6, 91.9, 36.0])
-CF_D_F = np.array([39.3, 90.3, 36.9])
+########################
+CF = {
+    'Tn': np.array([
+        [17, 7, 4],
+        [7, 38, 6],
+        [4, 5, 17]
+    ]),
+    'Rn': np.array([
+        [7, 17, 22],
+        [17, 15, 23],
+        [22, 23, 7]
+    ]),
+    'Rf': np.array([
+        [4, 9, 11],
+        [9, 8, 12],
+        [11, 12, 4]
+    ]),
+    'Of': np.array([38.6, 91.9, 36.0]),
+    'Df': np.array([39.3, 90.3, 36.9])
+}
 
 
 if __name__ == '__main__':
-    model = ODGrowthFactor(g_func=ODGrowthFactor.AVG, error=0.01)
-    model.fit(ZZ_OD_NOW)
-    ret = model.predict(ZZ_O_F, ZZ_D_F)
-    print('迭代结果为：\n', ret)
+    model = ODGrowthFactor(g_func=ODGrowthFactor.FUR, error=0.03)
+    model.fit(CF['Tn'])
+    ret = model.predict(CF['Of'], CF['Df'])
+    print('迭代结果为：\n', model.sum(ret))
     print('共迭代 {} 次'.format(model.iter_count))
