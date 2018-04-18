@@ -51,7 +51,7 @@ class ODGravity:
         '''
         # 延长O&D
         Or = np.repeat(self.Or, self.Dr.size)
-        Dr = np.tile(self.Dr, self.Or.size)       
+        Dr = np.tile(self.Dr, self.Or.size)
 
         # 计算系数
         E = np.ones(self.Tr.size)
@@ -120,7 +120,7 @@ class ODGravity:
         M = self.Tr / T
         Y = self.Tr / self.Or.reshape(-1, 1)
         K = (1 - Y)*M / (1 - Y*M)
-        
+
         # 生成模型
         self.predict_main = lambda O, D, R: O.reshape(-1, 1) * D * self.func_r(
             R, r) * K / (D * self.func_r(R, r)*K).sum(axis=1)
@@ -129,6 +129,7 @@ class ODGravity:
         '''
         双约束重力模型
         '''
+        # 参数标定
         self.r, Ki, Kj = self.bin_r_iter()
         self.K = Ki.reshape(-1, 1) * Kj
         self.predict_main = lambda O, D, R: self.K * \
@@ -137,11 +138,24 @@ class ODGravity:
     def bin_r_iter(self, r=1):
         '''
         双约束r迭代函数
+        Parameters:
+            r: 阻抗系数
+        Returns:
+            r,Ki,Kj: 阻抗系数，行约束系数，列约束系数
         '''
+        # 计算阻抗函数值
         Fr = self.power(self.Rr, r)
+
+        # 令Kj都为1
         Kj = np.ones(self.Dr.size)
-        Ki = Ki = (Kj * self.Dr * Fr).sum(axis=1)**-1
+
+        # 求出Ki
+        Ki = (Kj * self.Dr * Fr).sum(axis=1)**-1
+
+        # 迭代Ki,Kj
         Ki, Kj = self.bin_k_iter(Fr, Ki, Kj)
+
+        # 计算误差
         T = Ki.reshape(-1, 1) * Kj * self.Or.reshape(-1, 1) * self.Dr * Fr
         Rr = (self.Tr * self.Rr).sum() / self.Tr.sum()
         Rp = (T * self.Rr).sum() / T.sum()
@@ -157,6 +171,13 @@ class ODGravity:
     def bin_k_iter(self, Fr, Ki, Kj):
         '''
         双约束K迭代函数
+
+        Parameters:
+            Fr: 阻抗函数值
+            Ki: 行约束系数
+            Kj: 列约束系数
+        Returns:
+            Ki,Kj: 行约束系数，列约束系数
         '''
         Kj_new = (Ki * self.Or * Fr.T).sum(axis=1)**-1
         Ki_new = (Kj_new * self.Dr * Fr).sum(axis=1)**-1
@@ -168,6 +189,12 @@ class ODGravity:
     def predict(self, O, D, R):
         '''
         预测规划年出行分布量
+        Parameters:
+            O: 规划年产生量向量
+            D: 规划年吸引量向量
+            R: 规划年阻抗矩阵
+        Returns:
+            规划年预测分布量矩阵
         '''
         return self.predict_main(O, D, R)
 
@@ -185,43 +212,62 @@ class ODGravity:
         '''
         return 1 / np.exp(C * r)
 
+    @staticmethod
+    def sum(T):
+        '''
+        对OD矩阵列与行求和
+
+        Parameters:
+            T: OD矩阵
+        Returns:
+            求和后的矩阵
+        '''
+        T = np.hstack((T, T.sum(axis=1).reshape(-1, 1)))
+        return np.vstack((T, T.sum(axis=0)))
+
 
 #######################
 #  渣渣课本 例题数据
 #######################
-ODnow = np.array([
-    [150, 100, 50],
-    [400, 100, 200]
-])
-
-Rnow = np.array([
-    [3, 2, 5],
-    [3, 5, 4]
-])
+ZZ = {
+    'Tn': np.array([
+        [150, 100, 50],
+        [400, 100, 200]
+    ]),
+    'Rn': np.array([
+        [3, 2, 5],
+        [3, 5, 4]
+    ])
+}
 
 ########################
 #  邵春福 PPT 例题数据
 ########################
-CF_OD_NOW = np.array([
-    [17, 7, 4],
-    [7, 38, 6],
-    [4, 5, 17]
-])
-CF_C_NOW = np.array([
-    [7, 17, 22],
-    [17, 15, 23],
-    [22, 23, 7]
-])
+CF = {
+    'Tn': np.array([
+        [17, 7, 4],
+        [7, 38, 6],
+        [4, 5, 17]
+    ]),
+    'Rn': np.array([
+        [7, 17, 22],
+        [17, 15, 23],
+        [22, 23, 7]
+    ]),
+    'Rf': np.array([
+        [4, 9, 11],
+        [9, 8, 12],
+        [11, 12, 4]
+    ]),
+    'Of': np.array([38.6, 91.9, 36.0]),
+    'Df': np.array([39.3, 90.3, 36.9])
+}
 
-CF_C_FUT = np.array([
-    [4, 9, 11],
-    [9, 8, 12],
-    [11, 12, 4]
-])
-CF_O_F = np.array([38.6, 91.9, 36.0])
-CF_D_F = np.array([39.3, 90.3, 36.9])
 if __name__ == '__main__':
+    # 创建一个模型实例
     gravity = ODGravity(model=ODGravity.BPR)
-    gravity.fit(CF_OD_NOW, CF_C_NOW)
-    ret = gravity.predict(CF_O_F, CF_D_F, CF_C_FUT)
-    print(ret)
+    # 模型训练
+    gravity.fit(CF['Tn'], CF['Rn'])
+    # 结果预测
+    ret = gravity.predict(CF['Of'], CF['Df'], CF['Rf'])
+    print(gravity.sum(ret))
