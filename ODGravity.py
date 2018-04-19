@@ -130,10 +130,10 @@ class ODGravity:
         双约束重力模型
         '''
         # 参数标定
-        self.r, Ki, Kj = self.bin_r_iter()
-        self.K = Ki.reshape(-1, 1) * Kj
-        self.predict_main = lambda O, D, R: self.K * \
-            O.reshape(-1, 1) * D * self.power(R, self.r)
+        r, Ki, Kj = self.bin_r_iter()
+        K = Ki.reshape(-1, 1) * Kj
+        self.predict_main = lambda O, D, R: K * \
+            O.reshape(-1, 1) * D * self.func_r(R, r)
 
     def bin_r_iter(self, r=1):
         '''
@@ -265,9 +265,9 @@ CF = {
 
 if __name__ == '__main__':
     # 创建一个模型实例
-    gravity = ODGravity(model=ODGravity.BPR)
+    gravity = ODGravity(model=ODGravity.BC)
     # 模型训练
     gravity.fit(CF['Tn'], CF['Rn'])
-    # 结果预测
+    # # 结果预测
     ret = gravity.predict(CF['Of'], CF['Df'], CF['Rf'])
     print(gravity.sum(ret))
