@@ -130,12 +130,11 @@ class ODGravity:
         双约束重力模型
         '''
         # 参数标定
-        r, Ki, Kj = self.bin_r_iter()
-        K = Ki.reshape(-1, 1) * Kj
-        self.predict_main = lambda O, D, R: K * \
-            O.reshape(-1, 1) * D * self.func_r(R, r)
+        r = self.bin_start_iter(self.Or, self.Dr, self.Rr)
+        # 生成模型
+        self.predict_main = lambda O, D, R: self.bin_start_iter(O, D, R, r, False)
 
-    def bin_r_iter(self, r=1):
+    def bin_start_iter(self, O, D, R, r=1, need_check=True):
         '''
         双约束r迭代函数
         Parameters:
@@ -144,31 +143,36 @@ class ODGravity:
             r,Ki,Kj: 阻抗系数，行约束系数，列约束系数
         '''
         # 计算阻抗函数值
-        Fr = self.power(self.Rr, r)
+        Fr = self.power(R, r)
 
         # 令Kj都为1
-        Kj = np.ones(self.Dr.size)
+        Kj = np.ones(D.size)
 
         # 求出Ki
-        Ki = (Kj * self.Dr * Fr).sum(axis=1)**-1
+        Ki = (Kj * D * Fr).sum(axis=1)**-1
 
         # 迭代Ki,Kj
-        Ki, Kj = self.bin_k_iter(Fr, Ki, Kj)
+        Ki, Kj = self.bin_k_iter(Fr, Ki, Kj, O, D)
+
+        T = Ki.reshape(-1, 1) * Kj * O.reshape(-1, 1) * D * Fr
+
+        # 是否需要误差检验，图不需要（说明实在预测）就返回预测OD矩阵
+        if not need_check:
+            return T
 
         # 计算误差
-        T = Ki.reshape(-1, 1) * Kj * self.Or.reshape(-1, 1) * self.Dr * Fr
         Rr = (self.Tr * self.Rr).sum() / self.Tr.sum()
         Rp = (T * self.Rr).sum() / T.sum()
         error = np.abs(Rp-Rr) / Rr
         if error > 0.03:
             if Rr > Rp:
-                return self.bin_r_iter(r/2)
+                return self.bin_start_iter(O, D, R, r/2)
             else:
-                return self.bin_r_iter(r/2*3)
+                return self.bin_start_iter(O, D, R, r/2*3)
         else:
-            return r, Ki, Kj
+            return r
 
-    def bin_k_iter(self, Fr, Ki, Kj):
+    def bin_k_iter(self, Fr, Ki, Kj, O, D):
         '''
         双约束K迭代函数
 
@@ -179,10 +183,10 @@ class ODGravity:
         Returns:
             Ki,Kj: 行约束系数，列约束系数
         '''
-        Kj_new = (Ki * self.Or * Fr.T).sum(axis=1)**-1
-        Ki_new = (Kj_new * self.Dr * Fr).sum(axis=1)**-1
+        Kj_new = (Ki * O * Fr.T).sum(axis=1)**-1
+        Ki_new = (Kj_new * D * Fr).sum(axis=1)**-1
         if (np.abs(1 - Ki_new / Ki) > 0.03).any() or (np.abs(1 - Kj_new / Kj) > 0.03).any():
-            return self.bin_k_iter(Fr, Ki_new, Kj_new)
+            return self.bin_k_iter(Fr, Ki_new, Kj_new, O, D)
         else:
             return Ki_new, Kj_new
 
